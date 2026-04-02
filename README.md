@@ -1,10 +1,8 @@
 # 📦 Gerenciador de Estoque
 
-Sistema web completo de gerenciamento de estoque com autenticação, controle de produtos, vendas e relatórios. Desenvolvido com Blazor WebAssembly (.NET 9) e deployado no Google Cloud Run com banco de dados MySQL.
+Sistema web de gerenciamento de estoque desenvolvido para uso interno de uma loja. Projeto de portfólio demonstrando integração entre Blazor WebAssembly, ASP.NET Core e infraestrutura no Google Cloud.
 
-## 🔗 Demo
-
-🌐 [estoque.kairyuutcg.com.br](https://estoque.kairyuutcg.com.br)
+> ⚠️ **Aplicação de uso interno** — não possui acesso público. O repositório existe para fins de portfólio e demonstração de código.
 
 ## 🛠️ Tecnologias
 
