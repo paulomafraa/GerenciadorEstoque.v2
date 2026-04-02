@@ -1,0 +1,180 @@
+﻿@page "/vendas"
+@rendermode InteractiveWebAssembly
+@inject HttpClient Http
+@inject ISnackbar Snackbar
+@inject IJSRuntime JS
+
+<PageTitle>Vendas</PageTitle>
+
+<MudText Typo="Typo.h4" Class="mb-4">🛒 Histórico de Vendas</MudText>
+
+@if (_carregando)
+{
+    <MudProgressLinear Color="Color.Primary" Indeterminate="true" />
+}
+else
+{
+    <MudGrid Class="mb-4">
+        <MudItem xs="12" sm="4">
+            <MudPaper Class="pa-4 d-flex flex-column align-center" Elevation="2">
+                <MudText Typo="Typo.h5" Color="Color.Primary">@_vendas.Count</MudText>
+                <MudText Typo="Typo.body2">Total de Vendas</MudText>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="12" sm="4">
+            <MudPaper Class="pa-4 d-flex flex-column align-center" Elevation="2">
+                <MudText Typo="Typo.h5" Color="Color.Success">R$ @_vendas.Sum(v => v.ValorTotal).ToString("N2")</MudText>
+                <MudText Typo="Typo.body2">Faturamento</MudText>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="12" sm="4">
+            <MudPaper Class="pa-4 d-flex flex-column align-center" Elevation="2">
+                <MudText Typo="Typo.h5" Color="@(_vendasPendentes > 0 ? Color.Warning : Color.Success)">
+                    @_vendasPendentes
+                </MudText>
+                <MudText Typo="Typo.body2">Pagamentos Pendentes</MudText>
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+
+    <MudTable Items="@_vendas" Dense="true" Hover="true" Elevation="2"
+              Breakpoint="Breakpoint.Sm" Filter="new Func<Venda, bool>(FiltrarVendas)"
+              LoadingProgressColor="Color.Primary">
+        <ToolBarContent>
+            <MudText Typo="Typo.h6">Vendas</MudText>
+            <MudSpacer />
+            <MudTextField @bind-Value="_filtro" Placeholder="Pesquisar..." Adornment="Adornment.Start"
+                          AdornmentIcon="@Icons.Material.Filled.Search" IconSize="Size.Medium"
+                          Variant="Variant.Outlined" Margin="Margin.Dense" />
+        </ToolBarContent>
+        <HeaderContent>
+            <MudTh><MudTableSortLabel SortBy="new Func<Venda, object>(v => v.DataVenda)">Data</MudTableSortLabel></MudTh>
+            <MudTh>Produto</MudTh>
+            <MudTh>Qtd</MudTh>
+            <MudTh>Cliente</MudTh>
+            <MudTh>Vendedor</MudTh>
+            <MudTh>Total</MudTh>
+            <MudTh>Pagamento</MudTh>
+            <MudTh>Status</MudTh>
+            <MudTh>Comp.</MudTh>
+            <MudTh>Ações</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd DataLabel="Data">@context.DataVenda.ToString("dd/MM/yyyy HH:mm")</MudTd>
+            <MudTd DataLabel="Produto">@(context.Produto?.Nome ?? "—")</MudTd>
+            <MudTd DataLabel="Qtd">@context.Quantidade</MudTd>
+            <MudTd DataLabel="Cliente">@(context.Cliente ?? "—")</MudTd>
+            <MudTd DataLabel="Vendedor">@(context.Responsavel ?? "—")</MudTd>
+            <MudTd DataLabel="Total">
+                <MudChip T="string" Color="Color.Success" Size="Size.Small">R$ @context.ValorTotal.ToString("N2")</MudChip>
+            </MudTd>
+            <MudTd DataLabel="Pagamento">@context.FormaPagamento</MudTd>
+            <MudTd DataLabel="Status">
+                @if (context.Pago)
+                {
+                    <MudChip T="string" Color="Color.Success" Size="Size.Small" Icon="@Icons.Material.Filled.CheckCircle">Pago</MudChip>
+                }
+                else
+                {
+                    <MudChip T="string" Color="Color.Warning" Size="Size.Small" Icon="@Icons.Material.Filled.Schedule">Pendente</MudChip>
+                }
+            </MudTd>
+            <MudTd DataLabel="Comp.">
+                @if (!string.IsNullOrEmpty(context.ComprovanteUrl))
+                {
+                    <MudTooltip Text="Ver comprovante">
+                        <MudIconButton Icon="@Icons.Material.Filled.Receipt" Color="Color.Info"
+                                       Size="Size.Small" OnClick="@(() => VerComprovante(context.Id))" />
+                    </MudTooltip>
+                }
+                else
+                {
+                    <MudText Typo="Typo.caption" Color="Color.Default">—</MudText>
+                }
+            </MudTd>
+            <MudTd>
+                <div class="d-flex gap-1">
+                    @if (!context.Pago)
+                    {
+                        <MudTooltip Text="Marcar como pago">
+                            <MudIconButton Icon="@Icons.Material.Filled.CheckCircle" Color="Color.Success"
+                                           Size="Size.Small" OnClick="@(() => MarcarComoPago(context))" />
+                        </MudTooltip>
+                    }
+                    <MudTooltip Text="Baixar ficha da venda">
+                        <MudIconButton Icon="@Icons.Material.Filled.Download" Color="Color.Primary"
+                                       Size="Size.Small" OnClick="@(() => BaixarFicha(context.Id))" />
+                    </MudTooltip>
+                </div>
+            </MudTd>
+        </RowTemplate>
+        <NoRecordsContent>
+            <MudText>Nenhuma venda encontrada.</MudText>
+        </NoRecordsContent>
+        <PagerContent>
+            <MudTablePager PageSizeOptions="new int[] { 10, 25, 50 }" />
+        </PagerContent>
+    </MudTable>
+}
+
+@code {
+    private List<Venda> _vendas = new();
+    private bool _carregando = true;
+    private string _filtro = string.Empty;
+    private int _vendasPendentes;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await CarregarVendas();
+    }
+
+    private async Task CarregarVendas()
+    {
+        _carregando = true;
+        try
+        {
+            _vendas = await Http.GetFromJsonAsync<List<Venda>>("api/vendas") ?? new();
+            _vendasPendentes = _vendas.Count(v => !v.Pago);
+        }
+        catch { Snackbar.Add("Erro ao carregar vendas.", Severity.Error); }
+        _carregando = false;
+    }
+
+    private bool FiltrarVendas(Venda venda)
+    {
+        if (string.IsNullOrWhiteSpace(_filtro)) return true;
+        var termo = _filtro.ToLower();
+        return (venda.Produto?.Nome?.Contains(termo, StringComparison.OrdinalIgnoreCase) ?? false)
+            || (venda.Cliente?.Contains(termo, StringComparison.OrdinalIgnoreCase) ?? false)
+            || (venda.Responsavel?.Contains(termo, StringComparison.OrdinalIgnoreCase) ?? false)
+            || venda.FormaPagamento.Contains(termo, StringComparison.OrdinalIgnoreCase)
+            || (venda.Observacoes?.Contains(termo, StringComparison.OrdinalIgnoreCase) ?? false);
+    }
+
+    private async Task MarcarComoPago(Venda venda)
+    {
+        venda.Pago = true;
+        venda.ValorPago = venda.ValorTotal;
+        var response = await Http.PutAsJsonAsync($"api/vendas/{venda.Id}", venda);
+        if (response.IsSuccessStatusCode)
+        {
+            Snackbar.Add("Venda marcada como paga!", Severity.Success);
+            _vendasPendentes = _vendas.Count(v => !v.Pago);
+        }
+        else
+        {
+            venda.Pago = false;
+            Snackbar.Add("Erro ao atualizar venda.", Severity.Error);
+        }
+    }
+
+    private async Task VerComprovante(int vendaId)
+    {
+        await JS.InvokeVoidAsync("open", $"api/vendas/{vendaId}/comprovante", "_blank");
+    }
+
+    private async Task BaixarFicha(int vendaId)
+    {
+        await JS.InvokeVoidAsync("open", $"api/vendas/{vendaId}/ficha", "_blank");
+    }
+}

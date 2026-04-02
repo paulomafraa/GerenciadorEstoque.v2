@@ -1,0 +1,424 @@
+﻿@page "/relatorios"
+@rendermode InteractiveWebAssembly
+@inject HttpClient Http
+@inject IJSRuntime JS
+
+<PageTitle>Relatórios</PageTitle>
+
+<MudText Typo="Typo.h4" Class="mb-4">📊 Relatórios e Métricas</MudText>
+
+@if (_carregando)
+{
+    <MudProgressLinear Color="Color.Primary" Indeterminate="true" />
+}
+else
+{
+    <!-- Filtros -->
+    <MudPaper Class="pa-3 mb-4" Elevation="1">
+        <div class="d-flex align-center gap-3 flex-wrap">
+            <MudDatePicker @bind-Date="_dataInicio" Label="De" Variant="Variant.Outlined"
+                           DateFormat="dd/MM/yyyy" Margin="Margin.Dense" />
+            <MudDatePicker @bind-Date="_dataFim" Label="Até" Variant="Variant.Outlined"
+                           DateFormat="dd/MM/yyyy" Margin="Margin.Dense" />
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="AplicarFiltro"
+                       StartIcon="@Icons.Material.Filled.FilterAlt">Filtrar</MudButton>
+            <MudButton Variant="Variant.Text" Color="Color.Default" OnClick="LimparFiltro">Limpar</MudButton>
+        </div>
+    </MudPaper>
+
+    <!-- Tabs -->
+    <MudTabs Elevation="2" Rounded="true" ApplyEffectsToContainer="true" Class="mb-4"
+             PanelClass="pa-4" @bind-ActivePanelIndex="_abaAtiva">
+
+        <!-- ═══ VISÃO GERAL ═══ -->
+        <MudTabPanel Text="Visão Geral" Icon="@Icons.Material.Filled.Dashboard">
+            <MudGrid Class="mb-4">
+                <MudItem xs="6" sm="3">
+                    <MudPaper Class="pa-4 d-flex flex-column align-center" Elevation="2">
+                        <MudIcon Icon="@Icons.Material.Filled.ShoppingCart" Color="Color.Primary" />
+                        <MudText Typo="Typo.h5">@_vendasFiltradas.Count</MudText>
+                        <MudText Typo="Typo.caption">Vendas</MudText>
+                    </MudPaper>
+                </MudItem>
+                <MudItem xs="6" sm="3">
+                    <MudPaper Class="pa-4 d-flex flex-column align-center" Elevation="2">
+                        <MudIcon Icon="@Icons.Material.Filled.AttachMoney" Color="Color.Success" />
+                        <MudText Typo="Typo.h5">R$ @Faturamento.ToString("N2")</MudText>
+                        <MudText Typo="Typo.caption">Faturamento</MudText>
+                    </MudPaper>
+                </MudItem>
+                <MudItem xs="6" sm="3">
+                    <MudPaper Class="pa-4 d-flex flex-column align-center" Elevation="2">
+                        <MudIcon Icon="@Icons.Material.Filled.TrendingUp" Color="Color.Info" />
+                        <MudText Typo="Typo.h5">R$ @TicketMedio.ToString("N2")</MudText>
+                        <MudText Typo="Typo.caption">Ticket Médio</MudText>
+                    </MudPaper>
+                </MudItem>
+                <MudItem xs="6" sm="3">
+                    <MudPaper Class="pa-4 d-flex flex-column align-center" Elevation="2">
+                        <MudIcon Icon="@Icons.Material.Filled.Inventory" Color="Color.Warning" />
+                        <MudText Typo="Typo.h5">@_vendasFiltradas.Sum(v => v.Quantidade)</MudText>
+                        <MudText Typo="Typo.caption">Unidades Vendidas</MudText>
+                    </MudPaper>
+                </MudItem>
+            </MudGrid>
+
+            <!-- Faturamento por dia -->
+            <MudPaper Class="pa-4 mb-4" Elevation="2">
+                <MudText Typo="Typo.h6" Class="mb-3">📈 Faturamento por Dia</MudText>
+                @{
+                    var maxFatDia = FaturamentoPorDia.Any() ? FaturamentoPorDia.Max(x => x.Valor) : 1m;
+                }
+                @foreach (var dia in FaturamentoPorDia.Take(15))
+                {
+                    var pct = maxFatDia > 0 ? (int)(dia.Valor / maxFatDia * 100) : 0;
+                    <div class="d-flex align-center gap-2 mb-1">
+                        <MudText Typo="Typo.caption" Style="min-width:70px;">@dia.Data.ToString("dd/MM/yyyy")</MudText>
+                        <MudProgressLinear Value="@pct" Color="Color.Primary" Style="flex:1;" />
+                        <MudText Typo="Typo.caption" Style="min-width:100px;text-align:right;"><b>R$ @dia.Valor.ToString("N2")</b></MudText>
+                    </div>
+                }
+            </MudPaper>
+
+            <!-- Formas de pagamento -->
+            <MudGrid Class="mb-4">
+                <MudItem xs="12" md="6">
+                    <MudPaper Class="pa-4" Elevation="2">
+                        <MudText Typo="Typo.h6" Class="mb-3">💳 Formas de Pagamento</MudText>
+                        @{
+                            var totalVendas = _vendasFiltradas.Count;
+                        }
+                        @foreach (var fp in FormasPagamento)
+                        {
+                            var pct = totalVendas > 0 ? (int)((double)fp.Contagem / totalVendas * 100) : 0;
+                            <div class="mb-2">
+                                <div class="d-flex justify-space-between">
+                                    <MudText Typo="Typo.body2">@fp.Forma</MudText>
+                                    <MudText Typo="Typo.body2"><b>@fp.Contagem</b> (@pct%)</MudText>
+                                </div>
+                                <MudProgressLinear Value="@pct" Color="Color.Info" />
+                            </div>
+                        }
+                    </MudPaper>
+                </MudItem>
+                <MudItem xs="12" md="6">
+                    <MudPaper Class="pa-4" Elevation="2">
+                        <MudText Typo="Typo.h6" Class="mb-3">✅ Status dos Pagamentos</MudText>
+                        @{
+                            var pagos = _vendasFiltradas.Count(v => v.Pago);
+                            var pendentes = _vendasFiltradas.Count(v => !v.Pago);
+                            var total = pagos + pendentes;
+                            var pctPago = total > 0 ? (int)((double)pagos / total * 100) : 0;
+                        }
+                        <div class="mb-3">
+                            <div class="d-flex justify-space-between">
+                                <MudText Typo="Typo.body2">Pagos</MudText>
+                                <MudText Typo="Typo.body2"><b>@pagos</b> (@pctPago%)</MudText>
+                            </div>
+                            <MudProgressLinear Value="@pctPago" Color="Color.Success" />
+                        </div>
+                        <div>
+                            <div class="d-flex justify-space-between">
+                                <MudText Typo="Typo.body2">Pendentes</MudText>
+                                <MudText Typo="Typo.body2"><b>@pendentes</b> (@(100 - pctPago)%)</MudText>
+                            </div>
+                            <MudProgressLinear Value="@(100 - pctPago)" Color="Color.Warning" />
+                        </div>
+                    </MudPaper>
+                </MudItem>
+            </MudGrid>
+        </MudTabPanel>
+
+        <!-- ═══ PRODUTOS ═══ -->
+        <MudTabPanel Text="Produtos" Icon="@Icons.Material.Filled.Category">
+            <MudGrid Class="mb-4">
+                <MudItem xs="12" md="6">
+                    <MudPaper Class="pa-4" Elevation="2">
+                        <MudText Typo="Typo.h6" Class="mb-3">🏆 Mais Vendidos (quantidade)</MudText>
+                        @{
+                            var maxQtd = TopProdutosQtd.Any() ? TopProdutosQtd.Max(x => x.Quantidade) : 1;
+                        }
+                        @foreach (var p in TopProdutosQtd)
+                        {
+                            var pct = maxQtd > 0 ? (int)((double)p.Quantidade / maxQtd * 100) : 0;
+                            <div class="mb-2">
+                                <div class="d-flex justify-space-between">
+                                    <MudText Typo="Typo.body2">@p.Nome</MudText>
+                                    <MudText Typo="Typo.body2"><b>@p.Quantidade un.</b></MudText>
+                                </div>
+                                <MudProgressLinear Value="@pct" Color="Color.Primary" />
+                            </div>
+                        }
+                    </MudPaper>
+                </MudItem>
+                <MudItem xs="12" md="6">
+                    <MudPaper Class="pa-4" Elevation="2">
+                        <MudText Typo="Typo.h6" Class="mb-3">💰 Maior Faturamento</MudText>
+                        @{
+                            var maxFat = TopProdutosFat.Any() ? TopProdutosFat.Max(x => x.Faturamento) : 1m;
+                        }
+                        @foreach (var p in TopProdutosFat)
+                        {
+                            var pct = maxFat > 0 ? (int)(p.Faturamento / maxFat * 100) : 0;
+                            <div class="mb-2">
+                                <div class="d-flex justify-space-between">
+                                    <MudText Typo="Typo.body2">@p.Nome</MudText>
+                                    <MudText Typo="Typo.body2"><b>R$ @p.Faturamento.ToString("N2")</b></MudText>
+                                </div>
+                                <MudProgressLinear Value="@pct" Color="Color.Success" />
+                            </div>
+                        }
+                    </MudPaper>
+                </MudItem>
+            </MudGrid>
+
+            <MudPaper Class="pa-4 mb-4" Elevation="2">
+                <MudText Typo="Typo.h6" Class="mb-3">📦 Estoque Parado</MudText>
+                <MudSimpleTable Dense="true" Hover="true">
+                    <thead><tr><th>Produto</th><th>Qtd</th><th>Última Venda</th><th>Dias Parado</th></tr></thead>
+                    <tbody>
+                        @foreach (var item in EstoqueParado)
+                        {
+                            <tr>
+                                <td>@item.Nome</td>
+                                <td>@item.QtdEstoque</td>
+                                <td>@(item.UltimaVenda?.ToString("dd/MM/yyyy") ?? "Nunca")</td>
+                                <td>
+                                    <MudChip T="string" Size="Size.Small"
+                                             Color="@(item.DiasParado > 30 ? Color.Error : item.DiasParado > 14 ? Color.Warning : Color.Success)">
+                                        @item.DiasParado dias
+                                    </MudChip>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </MudSimpleTable>
+            </MudPaper>
+        </MudTabPanel>
+
+        <!-- ═══ VENDEDORES ═══ -->
+        <MudTabPanel Text="Vendedores" Icon="@Icons.Material.Filled.People">
+            <MudPaper Class="pa-4 mb-4" Elevation="2">
+                <MudText Typo="Typo.h6" Class="mb-3">🧑‍💼 Ranking de Vendedores</MudText>
+                @{
+                    var maxVendFat = RankingVendedores.Any() ? RankingVendedores.Max(x => x.Faturamento) : 1m;
+                }
+                @foreach (var v in RankingVendedores)
+                {
+                    var pct = maxVendFat > 0 ? (int)(v.Faturamento / maxVendFat * 100) : 0;
+                    <div class="mb-3">
+                        <div class="d-flex justify-space-between">
+                            <MudText Typo="Typo.body1"><b>@v.Nome</b></MudText>
+                            <MudText Typo="Typo.body2">@v.TotalVendas vendas — R$ @v.Faturamento.ToString("N2")</MudText>
+                        </div>
+                        <MudProgressLinear Value="@pct" Color="Color.Secondary" />
+                    </div>
+                }
+            </MudPaper>
+
+            <MudPaper Class="pa-4 mb-4" Elevation="2">
+                <MudText Typo="Typo.h6" Class="mb-3">📋 Detalhamento</MudText>
+                <MudSimpleTable Dense="true" Hover="true">
+                    <thead><tr><th>Vendedor</th><th>Vendas</th><th>Unidades</th><th>Faturamento</th><th>Ticket Médio</th></tr></thead>
+                    <tbody>
+                        @foreach (var v in RankingVendedores)
+                        {
+                            var ticket = v.TotalVendas > 0 ? v.Faturamento / v.TotalVendas : 0m;
+                            <tr>
+                                <td><b>@v.Nome</b></td>
+                                <td>@v.TotalVendas</td>
+                                <td>@v.Unidades</td>
+                                <td>R$ @v.Faturamento.ToString("N2")</td>
+                                <td>R$ @ticket.ToString("N2")</td>
+                            </tr>
+                        }
+                    </tbody>
+                </MudSimpleTable>
+            </MudPaper>
+        </MudTabPanel>
+
+        <!-- ═══ FINANCEIRO ═══ -->
+        <MudTabPanel Text="Financeiro" Icon="@Icons.Material.Filled.AccountBalance">
+            <MudGrid Class="mb-4">
+                <MudItem xs="6" sm="3">
+                    <MudPaper Class="pa-4 d-flex flex-column align-center" Elevation="2" Style="border-left:4px solid #22c55e;">
+                        <MudText Typo="Typo.caption">Recebido</MudText>
+                        <MudText Typo="Typo.h5" Color="Color.Success">R$ @TotalRecebido.ToString("N2")</MudText>
+                    </MudPaper>
+                </MudItem>
+                <MudItem xs="6" sm="3">
+                    <MudPaper Class="pa-4 d-flex flex-column align-center" Elevation="2" Style="border-left:4px solid #f59e0b;">
+                        <MudText Typo="Typo.caption">A Receber</MudText>
+                        <MudText Typo="Typo.h5" Color="Color.Warning">R$ @TotalAReceber.ToString("N2")</MudText>
+                    </MudPaper>
+                </MudItem>
+                <MudItem xs="6" sm="3">
+                    <MudPaper Class="pa-4 d-flex flex-column align-center" Elevation="2" Style="border-left:4px solid #3b82f6;">
+                        <MudText Typo="Typo.caption">% Recebido</MudText>
+                        <MudText Typo="Typo.h5" Color="Color.Info">@PercRecebido.ToString("N1")%</MudText>
+                    </MudPaper>
+                </MudItem>
+                <MudItem xs="6" sm="3">
+                    <MudPaper Class="pa-4 d-flex flex-column align-center" Elevation="2" Style="border-left:4px solid #ef4444;">
+                        <MudText Typo="Typo.caption">Pendentes</MudText>
+                        <MudText Typo="Typo.h5" Color="Color.Error">@_vendasPendentes.Count</MudText>
+                    </MudPaper>
+                </MudItem>
+            </MudGrid>
+
+            <MudPaper Class="pa-4 mb-4" Elevation="2">
+                <MudText Typo="Typo.h6" Class="mb-3">💳 Valor por Forma de Pagamento</MudText>
+                @{
+                    var maxForma = FormasPagamentoValor.Any() ? FormasPagamentoValor.Max(x => x.Valor) : 1m;
+                }
+                @foreach (var fp in FormasPagamentoValor)
+                {
+                    var pct = maxForma > 0 ? (int)(fp.Valor / maxForma * 100) : 0;
+                    <div class="mb-2">
+                        <div class="d-flex justify-space-between">
+                            <MudText Typo="Typo.body2">@fp.Forma</MudText>
+                            <MudText Typo="Typo.body2"><b>R$ @fp.Valor.ToString("N2")</b></MudText>
+                        </div>
+                        <MudProgressLinear Value="@pct" Color="Color.Tertiary" />
+                    </div>
+                }
+            </MudPaper>
+
+            <MudPaper Class="pa-4 mb-4" Elevation="2">
+                <MudText Typo="Typo.h6" Class="mb-3">⚠️ Pagamentos Pendentes</MudText>
+                @if (!_vendasPendentes.Any())
+                {
+                    <MudAlert Severity="Severity.Success">Nenhum pagamento pendente! 🎉</MudAlert>
+                }
+                else
+                {
+                    <MudSimpleTable Dense="true" Hover="true">
+                        <thead><tr><th>Data</th><th>Produto</th><th>Cliente</th><th>Total</th><th>Pago</th><th>Restante</th><th>Previsão</th><th>Ficha</th></tr></thead>
+                        <tbody>
+                            @foreach (var v in _vendasPendentes)
+                            {
+                                <tr>
+                                    <td>@v.DataVenda.ToString("dd/MM/yyyy")</td>
+                                    <td>@(v.Produto?.Nome ?? "—")</td>
+                                    <td>@(v.Cliente ?? "—")</td>
+                                    <td>R$ @v.ValorTotal.ToString("N2")</td>
+                                    <td>R$ @((v.ValorPago ?? 0).ToString("N2"))</td>
+                                    <td><b>R$ @((v.ValorTotal - (v.ValorPago ?? 0)).ToString("N2"))</b></td>
+                                    <td>@(v.PrevisaoPagamentoRestante?.ToString("dd/MM/yyyy") ?? "N/A")</td>
+                                    <td><MudIconButton Icon="@Icons.Material.Filled.Download" Size="Size.Small" Color="Color.Primary" OnClick="@(() => BaixarFicha(v.Id))" /></td>
+                                </tr>
+                            }
+                        </tbody>
+                    </MudSimpleTable>
+                }
+            </MudPaper>
+        </MudTabPanel>
+
+        <!-- ═══ HISTÓRICO ═══ -->
+        <MudTabPanel Text="Histórico" Icon="@Icons.Material.Filled.History">
+            <MudPaper Class="pa-4 mb-4" Elevation="2">
+                <MudText Typo="Typo.h6" Class="mb-3">📅 Vendas por Dia</MudText>
+                <MudSimpleTable Dense="true" Hover="true">
+                    <thead><tr><th>Data</th><th>Vendas</th><th>Unidades</th><th>Faturamento</th></tr></thead>
+                    <tbody>
+                        @foreach (var item in VendasPorDia.Take(30))
+                        {
+                            <tr>
+                                <td>@item.Data.ToString("dd/MM/yyyy")</td>
+                                <td>@item.Total</td>
+                                <td>@item.Unidades</td>
+                                <td>R$ @item.Faturamento.ToString("N2")</td>
+                            </tr>
+                        }
+                    </tbody>
+                </MudSimpleTable>
+            </MudPaper>
+        </MudTabPanel>
+    </MudTabs>
+}
+
+@code {
+    private List<Venda> _todasVendas = new();
+    private List<Venda> _vendasFiltradas = new();
+    private List<Venda> _vendasPendentes = new();
+    private List<Produto> _produtos = new();
+    private bool _carregando = true;
+    private DateTime? _dataInicio;
+    private DateTime? _dataFim;
+    private int _abaAtiva;
+
+    // KPIs
+    private decimal Faturamento => _vendasFiltradas.Sum(v => v.ValorTotal);
+    private decimal TicketMedio => _vendasFiltradas.Count > 0 ? Faturamento / _vendasFiltradas.Count : 0;
+    private decimal TotalRecebido => _vendasFiltradas.Where(v => v.Pago).Sum(v => v.ValorTotal)
+        + _vendasFiltradas.Where(v => !v.Pago).Sum(v => v.ValorPago ?? 0);
+    private decimal TotalAReceber => _vendasFiltradas.Where(v => !v.Pago).Sum(v => v.ValorTotal - (v.ValorPago ?? 0));
+    private decimal PercRecebido { get { var t = Faturamento; return t > 0 ? TotalRecebido / t * 100 : 0; } }
+
+    // Dados
+    private List<(DateTime Data, decimal Valor)> FaturamentoPorDia =>
+        _vendasFiltradas.GroupBy(v => v.DataVenda.Date).OrderByDescending(g => g.Key)
+            .Select(g => (g.Key, g.Sum(v => v.ValorTotal))).Take(30).ToList();
+
+    private List<(string Forma, int Contagem)> FormasPagamento =>
+        _vendasFiltradas.GroupBy(v => v.FormaPagamento)
+            .Select(g => (g.Key, g.Count())).OrderByDescending(x => x.Item2).ToList();
+
+    private List<(string Forma, decimal Valor)> FormasPagamentoValor =>
+        _vendasFiltradas.GroupBy(v => v.FormaPagamento)
+            .Select(g => (g.Key, g.Sum(v => v.ValorTotal))).OrderByDescending(x => x.Item2).ToList();
+
+    private List<(string Nome, int Quantidade, decimal Faturamento)> TopProdutosQtd =>
+        _vendasFiltradas.GroupBy(v => v.Produto?.Nome ?? "—")
+            .Select(g => (g.Key, g.Sum(v => v.Quantidade), g.Sum(v => v.ValorTotal)))
+            .OrderByDescending(x => x.Item2).Take(10).ToList();
+
+    private List<(string Nome, decimal Faturamento)> TopProdutosFat =>
+        _vendasFiltradas.GroupBy(v => v.Produto?.Nome ?? "—")
+            .Select(g => (g.Key, g.Sum(v => v.ValorTotal)))
+            .OrderByDescending(x => x.Item2).Take(10).ToList();
+
+    private List<(string Nome, int TotalVendas, int Unidades, decimal Faturamento)> RankingVendedores =>
+        _vendasFiltradas.Where(v => !string.IsNullOrEmpty(v.Responsavel))
+            .GroupBy(v => v.Responsavel!)
+            .Select(g => (g.Key, g.Count(), g.Sum(v => v.Quantidade), g.Sum(v => v.ValorTotal)))
+            .OrderByDescending(x => x.Item4).ToList();
+
+    private List<(string Nome, int QtdEstoque, DateTime? UltimaVenda, int DiasParado)> EstoqueParado =>
+        _produtos.Where(p => (p.ItensEstoque?.Sum(e => e.Quantidade) ?? 0) > 0)
+            .Select(p =>
+            {
+                var uv = _todasVendas.Where(v => v.ProdutoId == p.Id).MaxBy(v => v.DataVenda)?.DataVenda;
+                var dias = uv.HasValue ? (int)(DateTime.Now - uv.Value).TotalDays : 999;
+                return (p.Nome, p.ItensEstoque?.Sum(e => e.Quantidade) ?? 0, uv, dias);
+            }).OrderByDescending(x => x.dias).Take(10).ToList();
+
+    private List<(DateTime Data, int Total, int Unidades, decimal Faturamento)> VendasPorDia =>
+        _vendasFiltradas.GroupBy(v => v.DataVenda.Date)
+            .Select(g => (g.Key, g.Count(), g.Sum(v => v.Quantidade), g.Sum(v => v.ValorTotal)))
+            .OrderByDescending(x => x.Key).ToList();
+
+    protected override async Task OnInitializedAsync()
+    {
+        _carregando = true;
+        _todasVendas = await Http.GetFromJsonAsync<List<Venda>>("api/vendas") ?? new();
+        _produtos = await Http.GetFromJsonAsync<List<Produto>>("api/produtos") ?? new();
+        _vendasFiltradas = _todasVendas;
+        _vendasPendentes = _todasVendas.Where(v => !v.Pago).OrderBy(v => v.PrevisaoPagamentoRestante).ToList();
+        _carregando = false;
+    }
+
+    private void AplicarFiltro()
+    {
+        _vendasFiltradas = _todasVendas;
+        if (_dataInicio.HasValue) _vendasFiltradas = _vendasFiltradas.Where(v => v.DataVenda.Date >= _dataInicio.Value.Date).ToList();
+        if (_dataFim.HasValue) _vendasFiltradas = _vendasFiltradas.Where(v => v.DataVenda.Date <= _dataFim.Value.Date).ToList();
+    }
+
+    private void LimparFiltro() { _dataInicio = null; _dataFim = null; _vendasFiltradas = _todasVendas; }
+
+    private async Task BaixarFicha(int vendaId)
+    {
+        await JS.InvokeVoidAsync("open", $"api/vendas/{vendaId}/ficha", "_blank");
+    }
+}

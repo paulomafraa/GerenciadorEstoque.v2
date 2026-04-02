@@ -1,0 +1,120 @@
+﻿@page "/usuarios"
+@rendermode InteractiveWebAssembly
+@inject HttpClient Http
+@inject ISnackbar Snackbar
+
+<PageTitle>Usuários</PageTitle>
+
+<MudText Typo="Typo.h4" Class="mb-4">👥 Usuários</MudText>
+
+<MudPaper Class="pa-4 mb-4" Elevation="2">
+    <MudText Typo="Typo.h6" Class="mb-3">Cadastrar Novo Usuário</MudText>
+    <div class="d-flex align-center gap-3">
+        <MudTextField @bind-Value="_novoNome" Label="Nome" Variant="Variant.Outlined"
+                      Style="max-width:300px;" />
+        <MudSelect @bind-Value="_novoCargo" Label="Cargo" Variant="Variant.Outlined"
+                   Style="max-width:200px;" T="string">
+            <MudSelectItem Value="@("Vendedor")">Vendedor</MudSelectItem>
+            <MudSelectItem Value="@("Gerente")">Gerente</MudSelectItem>
+            <MudSelectItem Value="@("Estoquista")">Estoquista</MudSelectItem>
+            <MudSelectItem Value="@("Administrador")">Administrador</MudSelectItem>
+        </MudSelect>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                   StartIcon="@Icons.Material.Filled.PersonAdd" OnClick="Adicionar">
+            Adicionar
+        </MudButton>
+    </div>
+</MudPaper>
+
+<MudTable Items="@_usuarios" Dense="true" Hover="true" Elevation="2">
+    <HeaderContent>
+        <MudTh>Nome</MudTh>
+        <MudTh>Cargo</MudTh>
+        <MudTh>Status</MudTh>
+        <MudTh>Cadastro</MudTh>
+        <MudTh>Ações</MudTh>
+    </HeaderContent>
+    <RowTemplate>
+        <MudTd DataLabel="Nome">
+            <MudText Typo="Typo.body1"><b>@context.Nome</b></MudText>
+        </MudTd>
+        <MudTd DataLabel="Cargo">@(context.Cargo ?? "—")</MudTd>
+        <MudTd DataLabel="Status">
+            @if (context.Ativo)
+            {
+                <MudChip T="string" Color="Color.Success" Size="Size.Small">Ativo</MudChip>
+            }
+            else
+            {
+                <MudChip T="string" Color="Color.Default" Size="Size.Small">Inativo</MudChip>
+            }
+        </MudTd>
+        <MudTd DataLabel="Cadastro">@context.DataCadastro.ToString("dd/MM/yyyy")</MudTd>
+        <MudTd>
+            <MudTooltip Text="@(context.Ativo ? "Desativar" : "Reativar")">
+                <MudIconButton Icon="@(context.Ativo ? Icons.Material.Filled.PersonOff : Icons.Material.Filled.PersonAdd)"
+                               Color="@(context.Ativo ? Color.Warning : Color.Success)"
+                               Size="Size.Small" OnClick="@(() => AlternarStatus(context))" />
+            </MudTooltip>
+            <MudTooltip Text="Excluir">
+                <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error"
+                               Size="Size.Small" OnClick="@(() => Excluir(context))" />
+            </MudTooltip>
+        </MudTd>
+    </RowTemplate>
+    <NoRecordsContent>
+        <MudText>Nenhum usuário cadastrado.</MudText>
+    </NoRecordsContent>
+</MudTable>
+
+@code {
+    private List<Usuario> _usuarios = new();
+    private string _novoNome = string.Empty;
+    private string _novoCargo = "Vendedor";
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Carregar();
+    }
+
+    private async Task Carregar()
+    {
+        _usuarios = await Http.GetFromJsonAsync<List<Usuario>>("api/usuarios") ?? new();
+    }
+
+    private async Task Adicionar()
+    {
+        if (string.IsNullOrWhiteSpace(_novoNome))
+        {
+            Snackbar.Add("Informe o nome.", Severity.Warning);
+            return;
+        }
+
+        var usuario = new Usuario { Nome = _novoNome.Trim(), Cargo = _novoCargo };
+        var resp = await Http.PostAsJsonAsync("api/usuarios", usuario);
+        if (resp.IsSuccessStatusCode)
+        {
+            Snackbar.Add("Usuário cadastrado!", Severity.Success);
+            _novoNome = string.Empty;
+            await Carregar();
+        }
+        else
+        {
+            Snackbar.Add("Erro ao cadastrar.", Severity.Error);
+        }
+    }
+
+    private async Task AlternarStatus(Usuario usuario)
+    {
+        usuario.Ativo = !usuario.Ativo;
+        await Http.PutAsJsonAsync($"api/usuarios/{usuario.Id}", usuario);
+        Snackbar.Add($"Usuário {(usuario.Ativo ? "reativado" : "desativado")}.", Severity.Info);
+    }
+
+    private async Task Excluir(Usuario usuario)
+    {
+        await Http.DeleteAsync($"api/usuarios/{usuario.Id}");
+        Snackbar.Add("Usuário excluído.", Severity.Success);
+        await Carregar();
+    }
+}

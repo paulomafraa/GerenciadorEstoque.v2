@@ -1,0 +1,155 @@
+﻿@page "/produtos"
+@inject HttpClient Http
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+
+<PageTitle>Produtos</PageTitle>
+
+<MudText Typo="Typo.h4" Class="mb-4">📋 Produtos</MudText>
+
+<MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add"
+           OnClick="AbrirDialogNovoProduto" Class="mb-4">
+    Novo Produto
+</MudButton>
+
+@if (_carregando)
+{
+    <MudProgressLinear Color="Color.Primary" Indeterminate="true" />
+}
+else if (!_produtos.Any())
+{
+    <MudAlert Severity="Severity.Info">Nenhum produto cadastrado. Clique em "Novo Produto" para começar.</MudAlert>
+}
+else
+{
+    <MudGrid>
+        @foreach (var p in _produtos)
+        {
+            var qtdEstoque = p.ItensEstoque?.Sum(e => e.Quantidade) ?? 0;
+
+            <MudItem xs="12" sm="6" md="4" lg="3">
+                <MudCard Elevation="3" Class="rounded-lg" Style="height:100%;">
+                    @if (!string.IsNullOrEmpty(p.ImagemUrl))
+                    {
+                        <MudCardMedia Image="@($"api/produtos/imagem/{p.ImagemUrl}")" Height="200" />
+                    }
+                    else
+                    {
+                        <div class="d-flex justify-center align-center" style="height:200px;background:linear-gradient(135deg,#e3f2fd,#bbdefb);">
+                            <MudIcon Icon="@Icons.Material.Filled.AddAPhoto" Size="Size.Large" Color="Color.Primary" />
+                        </div>
+                    }
+                    <MudCardContent>
+                        <MudText Typo="Typo.h6">@p.Nome</MudText>
+                        <MudChip T="string" Color="Color.Info" Size="Size.Small">@p.Tipo</MudChip>
+                        <div class="d-flex justify-space-between mt-2">
+                            <MudText Typo="Typo.body2">Tabelado: <b>R$ @p.PrecoTabelado.ToString("N2")</b></MudText>
+                            <MudText Typo="Typo.body2">Venda: <b>R$ @p.PrecoVenda.ToString("N2")</b></MudText>
+                        </div>
+                        <MudChip T="string" Color="@(qtdEstoque > 0 ? Color.Success : Color.Error)" Size="Size.Small" Class="mt-1">
+                            Estoque: @qtdEstoque
+                        </MudChip>
+                    </MudCardContent>
+                    <MudCardActions>
+                        <MudButton HtmlTag="label"
+                                   Variant="Variant.Text"
+                                   Color="Color.Primary"
+                                   Size="Size.Small"
+                                   StartIcon="@Icons.Material.Filled.PhotoCamera">
+                            <InputFile OnChange="@(e => UploadImagem(p.Id, e))"
+                                       accept=".png,.jpg,.jpeg,.webp"
+                                       style="display:none;" />
+                            Foto
+                        </MudButton>
+                        <MudSpacer />
+                        <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error"
+                                       Size="Size.Small" OnClick="@(() => ExcluirProduto(p))" />
+                    </MudCardActions>
+                </MudCard>
+            </MudItem>
+        }
+    </MudGrid>
+}
+
+@code {
+    private List<Produto> _produtos = new();
+    private bool _carregando = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await CarregarProdutos();
+    }
+
+    private async Task CarregarProdutos()
+    {
+        _carregando = true;
+        try
+        {
+            _produtos = await Http.GetFromJsonAsync<List<Produto>>("api/produtos") ?? new();
+        }
+        catch
+        {
+            Snackbar.Add("Erro ao carregar produtos.", Severity.Error);
+        }
+        _carregando = false;
+    }
+
+    private async Task AbrirDialogNovoProduto()
+    {
+        var parameters = new DialogParameters();
+        var options = new DialogOptions
+        {
+            MaxWidth = MaxWidth.Small,
+            FullWidth = true,
+            CloseOnEscapeKey = true
+        };
+        var dialog = await DialogService.ShowAsync<DialogNovoProduto>("Novo Produto", parameters, options);
+        var result = await dialog.Result;
+
+        if (result is not null && !result.Canceled)
+            await CarregarProdutos();
+    }
+
+    private async Task UploadImagem(int produtoId, InputFileChangeEventArgs e)
+    {
+        try
+        {
+            var arquivo = e.File;
+            var content = new MultipartFormDataContent();
+            var stream = arquivo.OpenReadStream(5 * 1024 * 1024);
+            content.Add(new StreamContent(stream), "arquivo", arquivo.Name);
+
+            var response = await Http.PostAsync($"api/produtos/{produtoId}/imagem", content);
+            if (response.IsSuccessStatusCode)
+            {
+                Snackbar.Add("Imagem enviada!", Severity.Success);
+                await CarregarProdutos();
+            }
+        }
+        catch
+        {
+            Snackbar.Add("Erro ao enviar imagem.", Severity.Error);
+        }
+    }
+
+    private async Task ExcluirProduto(Produto produto)
+    {
+        var parameters = new DialogParameters<DialogConfirmacao>
+        {
+            { x => x.Mensagem, $"Deseja realmente excluir '{produto.Nome} - {produto.Tipo}'?" }
+        };
+        var options = new DialogOptions { MaxWidth = MaxWidth.ExtraSmall, FullWidth = true };
+        var dialog = await DialogService.ShowAsync<DialogConfirmacao>("Confirmar Exclusão", parameters, options);
+        var result = await dialog.Result;
+
+        if (result is not null && !result.Canceled)
+        {
+            var response = await Http.DeleteAsync($"api/produtos/{produto.Id}");
+            if (response.IsSuccessStatusCode)
+            {
+                Snackbar.Add("Produto excluído!", Severity.Success);
+                await CarregarProdutos();
+            }
+        }
+    }
+}

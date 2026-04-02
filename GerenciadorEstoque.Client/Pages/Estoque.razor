@@ -1,0 +1,547 @@
+﻿@page "/estoque"
+@rendermode InteractiveWebAssembly
+@inject HttpClient Http
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+
+<PageTitle>Estoque</PageTitle>
+
+<MudText Typo="Typo.h4" Class="mb-4">📦 Controle de Estoque</MudText>
+
+<!-- Responsável como Select -->
+<MudPaper Class="pa-3 mb-4" Elevation="1">
+    <MudSelect @bind-Value="_responsavel" Label="👤 Responsável pela ação" Variant="Variant.Outlined"
+               Required="true" T="string" HelperText="Selecione quem está realizando a operação">
+        @foreach (var u in _usuarios)
+        {
+            <MudSelectItem Value="@u.Nome">@u.Nome (@(u.Cargo ?? "—"))</MudSelectItem>
+        }
+    </MudSelect>
+    @if (!_usuarios.Any())
+    {
+        <MudAlert Severity="Severity.Warning" Dense="true" Class="mt-2">
+            Nenhum usuário cadastrado. <MudLink Href="/usuarios">Cadastre aqui</MudLink>.
+        </MudAlert>
+    }
+</MudPaper>
+
+<MudGrid>
+    <MudItem xs="12" md="5">
+        <MudPaper Class="pa-4" Elevation="2">
+            <MudText Typo="Typo.h6" Class="mb-3">Movimentação</MudText>
+
+            <MudSelect Value="_produtoSelecionadoId" Label="Produto" Variant="Variant.Outlined"
+                       Class="mb-3" T="int" ValueChanged="OnProdutoChanged">
+                @foreach (var p in _produtos)
+                {
+                    <MudSelectItem Value="@p.Id">@p.Nome - @p.Tipo</MudSelectItem>
+                }
+            </MudSelect>
+
+            <MudDivider Class="my-3" />
+            <MudText Typo="Typo.subtitle1" Class="mb-2">➕ Entrada de Estoque</MudText>
+
+            <div class="d-flex align-center gap-2 mb-3">
+                <MudIconButton Icon="@Icons.Material.Filled.Remove" Color="Color.Error" Size="Size.Small"
+                               OnClick="@(() => { if (_quantidade > 1) _quantidade--; })" />
+                <MudNumericField @bind-Value="_quantidade" Label="Qtd" Min="1"
+                                 Variant="Variant.Outlined" Style="max-width:100px;" T="int" />
+                <MudIconButton Icon="@Icons.Material.Filled.Add" Color="Color.Success" Size="Size.Small"
+                               OnClick="@(() => _quantidade++)" />
+            </div>
+
+            <MudNumericField @bind-Value="_precoCompra" Label="Preço de Compra por Unidade (R$)" Format="N2"
+                             Min="0.01m" Variant="Variant.Outlined" Class="mb-1" T="decimal"
+                             HelperText="Quanto custou CADA unidade (não o total do lote)" />
+
+            @if (_quantidade > 1 && _precoCompra > 0)
+            {
+                <MudAlert Severity="Severity.Info" Dense="true" Class="mb-3">
+                    Total do lote: <b>R$ @((_quantidade * _precoCompra).ToString("N2"))</b> (@_quantidade × R$ @_precoCompra.ToString("N2"))
+                </MudAlert>
+            }
+
+            <MudButton Variant="Variant.Filled" Color="Color.Success"
+                       StartIcon="@Icons.Material.Filled.Add" FullWidth="true"
+                       OnClick="AdicionarEstoque" Class="mb-3">
+                Adicionar ao Estoque
+            </MudButton>
+
+            <MudDivider Class="my-3" />
+            <MudText Typo="Typo.subtitle1" Class="mb-2">➖ Retirada / Venda</MudText>
+
+            <!-- Lista de itens para retirada -->
+            @for (var i = 0; i < _itensRetirada.Count; i++)
+            {
+                var idx = i;
+                var item = _itensRetirada[idx];
+                var prodItem = _produtos.FirstOrDefault(p => p.Id == item.ProdutoId);
+                <MudPaper Class="pa-3 mb-2" Elevation="1" Outlined="true">
+                    <div class="d-flex align-center gap-2 mb-2">
+                        @if (prodItem is not null && !string.IsNullOrEmpty(prodItem.ImagemUrl))
+                        {
+                            <MudAvatar Size="Size.Small" Image="@($"api/produtos/imagem/{prodItem.ImagemUrl}")" />
+                        }
+                        <MudSelect Value="@item.ProdutoId" Label="Produto" Variant="Variant.Outlined"
+                                   T="int" ValueChanged="@(v => item.ProdutoId = v)" Dense="true">
+                            @foreach (var p in _produtos)
+                            {
+                                <MudSelectItem Value="@p.Id">@p.Nome - @p.Tipo</MudSelectItem>
+                            }
+                        </MudSelect>
+                    </div>
+                    <div class="d-flex align-center gap-2">
+                        <MudNumericField @bind-Value="item.Quantidade" Label="Qtd" Min="1"
+                                         Variant="Variant.Outlined" Style="max-width:80px;" T="int" Dense="true" />
+                        @if (_registrarComoVenda)
+                        {
+                            <MudNumericField @bind-Value="item.ValorUnitario"
+                                             Label="Preço por unidade (R$)" Format="N2" Min="0m"
+                                             Variant="Variant.Outlined" T="decimal" Dense="true"
+                                             HelperText="Valor cobrado por CADA unidade" />
+                        }
+                        @if (_itensRetirada.Count > 1)
+                        {
+                            <MudIconButton Icon="@Icons.Material.Filled.Close" Color="Color.Error"
+                                           Size="Size.Small" OnClick="@(() => _itensRetirada.RemoveAt(idx))" />
+                        }
+                    </div>
+                    @if (_registrarComoVenda && item.Quantidade > 1 && item.ValorUnitario > 0)
+                    {
+                        <MudText Typo="Typo.caption" Color="Color.Info" Class="mt-1">
+                            Subtotal: R$ @((item.Quantidade * item.ValorUnitario).ToString("N2"))
+                        </MudText>
+                    }
+                </MudPaper>
+            }
+
+            <MudButton Variant="Variant.Text" Color="Color.Primary" Size="Size.Small"
+                       StartIcon="@Icons.Material.Filled.AddCircle"
+                       OnClick="@(() => _itensRetirada.Add(new ItemRetirada { ProdutoId = _produtoSelecionadoId, Quantidade = 1 }))"
+                       Class="mb-3">
+                Adicionar outro produto à retirada
+            </MudButton>
+
+            <MudCheckBox @bind-Value="_registrarComoVenda" Label="Registrar como venda" Color="Color.Primary" T="bool" />
+
+            @if (_registrarComoVenda)
+            {
+                <MudTextField @bind-Value="_clienteVenda" Label="Cliente" Variant="Variant.Outlined" Class="mb-2" />
+
+                <MudSelect @bind-Value="_formaPagamento" Label="Forma de Pagamento" Variant="Variant.Outlined" Class="mb-2" T="string">
+                    <MudSelectItem Value="@("Dinheiro")">💵 Dinheiro</MudSelectItem>
+                    <MudSelectItem Value="@("PIX")">📱 PIX</MudSelectItem>
+                    <MudSelectItem Value="@("Cartão Crédito")">💳 Cartão Crédito</MudSelectItem>
+                    <MudSelectItem Value="@("Cartão Débito")">💳 Cartão Débito</MudSelectItem>
+                    <MudSelectItem Value="@("Transferência")">🏦 Transferência</MudSelectItem>
+                    <MudSelectItem Value="@("Troca em Cartas")">🃏 Troca em Cartas</MudSelectItem>
+                    <MudSelectItem Value="@("Outro")">📝 Outro</MudSelectItem>
+                </MudSelect>
+
+                @if (TotalPedido > 0)
+                {
+                    <MudAlert Severity="Severity.Info" Dense="true" Class="mb-2">
+                        💰 Total do pedido: <b>R$ @TotalPedido.ToString("N2")</b>
+                    </MudAlert>
+                }
+
+                <MudCheckBox @bind-Value="_jaFoiPago" Label="Já foi pago o valor total?" Color="Color.Success" T="bool" />
+
+                @if (!_jaFoiPago)
+                {
+                    <MudNumericField @bind-Value="_valorPago" Label="Valor já pago (R$)" Format="N2"
+                                     Min="0m" Variant="Variant.Outlined" Class="mb-2" T="decimal"
+                                     HelperText="Quanto o cliente já pagou até agora" />
+
+                    @if (TotalPedido > 0 && _valorPago > 0)
+                    {
+                        <MudAlert Severity="Severity.Warning" Dense="true" Class="mb-2">
+                            Restante: <b>R$ @((TotalPedido - _valorPago).ToString("N2"))</b>
+                        </MudAlert>
+                    }
+
+                    <MudCheckBox @bind-Value="_semPrevisao" Label="Sem previsão de pagamento (N/A)" T="bool" Class="mb-2" />
+
+                    @if (!_semPrevisao)
+                    {
+                        <MudDatePicker @bind-Date="_previsaoPagamento" Label="Previsão de pagamento do restante"
+                                       Variant="Variant.Outlined" Class="mb-2" DateFormat="dd/MM/yyyy" />
+                    }
+
+                    <MudSelect @bind-Value="_formaPagamentoRestante" Label="Como será pago o restante"
+                               Variant="Variant.Outlined" Class="mb-2" T="string">
+                        <MudSelectItem Value="@("Dinheiro")">💵 Dinheiro</MudSelectItem>
+                        <MudSelectItem Value="@("PIX")">📱 PIX</MudSelectItem>
+                        <MudSelectItem Value="@("Cartão Crédito")">💳 Cartão Crédito</MudSelectItem>
+                        <MudSelectItem Value="@("Cartão Débito")">💳 Cartão Débito</MudSelectItem>
+                        <MudSelectItem Value="@("Transferência")">🏦 Transferência</MudSelectItem>
+                        <MudSelectItem Value="@("Troca em Cartas")">🃏 Troca em Cartas</MudSelectItem>
+                        <MudSelectItem Value="@("A combinar")">🤝 A combinar</MudSelectItem>
+                    </MudSelect>
+                }
+
+                <MudTextField @bind-Value="_observacoesVenda" Label="Observações" Lines="3"
+                              Variant="Variant.Outlined" Class="mb-2" />
+
+                <!-- Upload de comprovante -->
+                <MudPaper Class="pa-3 mb-2" Outlined="true">
+                    <MudText Typo="Typo.subtitle2" Class="mb-2">📎 Comprovante de Pagamento</MudText>
+                    <MudButton HtmlTag="label" Variant="Variant.Outlined" Color="Color.Primary"
+                               StartIcon="@Icons.Material.Filled.AttachFile" Size="Size.Small">
+                        @(_arquivoComprovante is not null ? _arquivoComprovante.Name : "Anexar arquivo")
+                        <InputFile OnChange="OnComprovanteChange" accept=".png,.jpg,.jpeg,.pdf,.webp"
+                                   style="display:none;" />
+                    </MudButton>
+                    @if (_arquivoComprovante is not null)
+                    {
+                        <MudChip T="string" Color="Color.Info" Size="Size.Small" Class="ml-2"
+                                 OnClose="@(() => _arquivoComprovante = null)">
+                            @_arquivoComprovante.Name
+                        </MudChip>
+                    }
+                </MudPaper>
+            }
+
+            <MudButton Variant="Variant.Filled" Color="Color.Warning"
+                       StartIcon="@Icons.Material.Filled.RemoveShoppingCart" FullWidth="true"
+                       OnClick="RetirarEstoque">
+                @(_registrarComoVenda ? "Retirar e Registrar Venda" : "Retirar do Estoque")
+            </MudButton>
+        </MudPaper>
+    </MudItem>
+
+    <MudItem xs="12" md="7">
+        @if (_produtoSelecionadoId > 0)
+        {
+            var produto = _produtos.FirstOrDefault(p => p.Id == _produtoSelecionadoId);
+            if (produto is not null)
+            {
+                var totalQtd = _itensEstoque.Sum(e => e.Quantidade);
+                var totalGasto = _itensEstoque.Sum(e => e.Quantidade * e.PrecoCompra);
+                var mediaCompra = totalQtd > 0 ? totalGasto / totalQtd : 0;
+                var lucroTabelado = (produto.PrecoTabelado - mediaCompra) * totalQtd;
+                var percTabelado = mediaCompra > 0 && produto.PrecoTabelado > 0 ? ((produto.PrecoTabelado - mediaCompra) / mediaCompra) * 100 : 0;
+                var lucroVenda = (produto.PrecoVenda - mediaCompra) * totalQtd;
+                var percVenda = mediaCompra > 0 && produto.PrecoVenda > 0 ? ((produto.PrecoVenda - mediaCompra) / mediaCompra) * 100 : 0;
+
+                <MudPaper Class="pa-4 mb-4" Elevation="2">
+                    <div class="d-flex align-center gap-3 mb-3">
+                        @if (!string.IsNullOrEmpty(produto.ImagemUrl))
+                        {
+                            <MudImage Src="@($"api/produtos/imagem/{produto.ImagemUrl}")"
+                                      Width="80" Height="80" ObjectFit="ObjectFit.Cover"
+                                      Class="rounded-lg" Elevation="2" />
+                        }
+                        else
+                        {
+                            <MudAvatar Size="Size.Large" Color="Color.Primary">
+                                @produto.Nome[0]
+                            </MudAvatar>
+                        }
+                        <div>
+                            <MudText Typo="Typo.h6">@produto.Nome</MudText>
+                            <MudChip T="string" Color="Color.Info" Size="Size.Small">@produto.Tipo</MudChip>
+                        </div>
+                    </div>
+
+                    <MudGrid>
+                        <MudItem xs="6" sm="3">
+                            <MudText Typo="Typo.caption">Quantidade</MudText>
+                            <MudText Typo="Typo.h6" Color="Color.Primary">@totalQtd</MudText>
+                        </MudItem>
+                        <MudItem xs="6" sm="3">
+                            <MudText Typo="Typo.caption">Média Compra (por un.)</MudText>
+                            <MudText Typo="Typo.h6">R$ @mediaCompra.ToString("N2")</MudText>
+                        </MudItem>
+                        <MudItem xs="6" sm="3">
+                            <MudText Typo="Typo.caption">Total Investido</MudText>
+                            <MudText Typo="Typo.h6">R$ @totalGasto.ToString("N2")</MudText>
+                        </MudItem>
+                        <MudItem xs="6" sm="3">
+                            <MudText Typo="Typo.caption">Vendas</MudText>
+                            <MudText Typo="Typo.h6" Color="Color.Warning">@produto.Vendas?.Count</MudText>
+                        </MudItem>
+                    </MudGrid>
+
+                    <MudDivider Class="my-3" />
+                    <MudGrid>
+                        <MudItem xs="12" sm="6">
+                            <MudAlert Severity="Severity.Info" Dense="true">
+                                Lucro (preço tabelado): <b>R$ @lucroTabelado.ToString("N2")</b> (@percTabelado.ToString("N1")%)
+                            </MudAlert>
+                        </MudItem>
+                        <MudItem xs="12" sm="6">
+                            <MudAlert Severity="Severity.Success" Dense="true">
+                                Lucro (preço venda): <b>R$ @lucroVenda.ToString("N2")</b> (@percVenda.ToString("N1")%)
+                            </MudAlert>
+                        </MudItem>
+                    </MudGrid>
+                </MudPaper>
+            }
+
+            <MudTable Items="@_itensEstoque" Dense="true" Hover="true" Elevation="2"
+                      Breakpoint="Breakpoint.Sm" LoadingProgressColor="Color.Primary">
+                <HeaderContent>
+                    <MudTh>Quantidade</MudTh>
+                    <MudTh>Preço por Unidade</MudTh>
+                    <MudTh>Total do Lote</MudTh>
+                    <MudTh>Data Compra</MudTh>
+                    <MudTh>Responsável</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd DataLabel="Quantidade">@context.Quantidade</MudTd>
+                    <MudTd DataLabel="Preço por Unidade">R$ @context.PrecoCompra.ToString("N2")</MudTd>
+                    <MudTd DataLabel="Total do Lote">R$ @((context.Quantidade * context.PrecoCompra).ToString("N2"))</MudTd>
+                    <MudTd DataLabel="Data">@context.DataCompra.ToString("dd/MM/yyyy")</MudTd>
+                    <MudTd DataLabel="Responsável">@(context.Responsavel ?? "—")</MudTd>
+                </RowTemplate>
+                <NoRecordsContent>
+                    <MudText>Nenhum item no estoque para este produto.</MudText>
+                </NoRecordsContent>
+            </MudTable>
+        }
+        else
+        {
+            <MudAlert Severity="Severity.Info" Class="mt-4">
+                Selecione um produto para ver o estoque.
+            </MudAlert>
+        }
+    </MudItem>
+</MudGrid>
+
+@code {
+    private List<Produto> _produtos = new();
+    private List<EstoqueItem> _itensEstoque = new();
+    private List<Usuario> _usuarios = new();
+    private int _produtoSelecionadoId;
+    private int _quantidade = 1;
+    private decimal _precoCompra;
+    private string _responsavel = string.Empty;
+
+    // Itens de retirada (suporte a múltiplos)
+    private List<ItemRetirada> _itensRetirada = new() { new ItemRetirada() };
+
+    // Campos de venda
+    private bool _registrarComoVenda;
+    private string _clienteVenda = string.Empty;
+    private string _formaPagamento = "Dinheiro";
+    private bool _jaFoiPago;
+    private decimal _valorPago;
+    private bool _semPrevisao;
+    private DateTime? _previsaoPagamento;
+    private string _formaPagamentoRestante = "A combinar";
+    private string _observacoesVenda = string.Empty;
+    private IBrowserFile? _arquivoComprovante;
+
+    // Propriedade computada para evitar @{} no markup
+    private decimal TotalPedido => _itensRetirada.Sum(i => i.Quantidade * i.ValorUnitario);
+
+    protected override async Task OnInitializedAsync()
+    {
+        _usuarios = await Http.GetFromJsonAsync<List<Usuario>>("api/usuarios/ativos") ?? new();
+        _produtos = await Http.GetFromJsonAsync<List<Produto>>("api/produtos") ?? new();
+        if (_produtos.Any())
+        {
+            _produtoSelecionadoId = _produtos.First().Id;
+            _itensRetirada = new() { new ItemRetirada { ProdutoId = _produtoSelecionadoId } };
+            await CarregarItensEstoque();
+        }
+    }
+
+    private async Task OnProdutoChanged(int novoId)
+    {
+        _produtoSelecionadoId = novoId;
+        await CarregarItensEstoque();
+    }
+
+    private async Task CarregarItensEstoque()
+    {
+        if (_produtoSelecionadoId > 0)
+        {
+            _itensEstoque = await Http.GetFromJsonAsync<List<EstoqueItem>>(
+                $"api/estoque/{_produtoSelecionadoId}") ?? new();
+        }
+    }
+
+    private bool ValidarResponsavel()
+    {
+        if (string.IsNullOrWhiteSpace(_responsavel))
+        {
+            Snackbar.Add("Selecione o responsável antes de realizar qualquer ação.", Severity.Warning);
+            return false;
+        }
+        return true;
+    }
+
+    private void OnComprovanteChange(InputFileChangeEventArgs e)
+    {
+        _arquivoComprovante = e.File;
+    }
+
+    private async Task AdicionarEstoque()
+    {
+        if (!ValidarResponsavel()) return;
+
+        if (_produtoSelecionadoId <= 0)
+        {
+            Snackbar.Add("Selecione um produto.", Severity.Warning);
+            return;
+        }
+        if (_quantidade <= 0 || _precoCompra <= 0)
+        {
+            Snackbar.Add("Quantidade e preço por unidade devem ser maiores que zero.", Severity.Warning);
+            return;
+        }
+
+        var item = new EstoqueItem
+        {
+            ProdutoId = _produtoSelecionadoId,
+            Quantidade = _quantidade,
+            PrecoCompra = _precoCompra,
+            Responsavel = _responsavel.Trim()
+        };
+
+        var response = await Http.PostAsJsonAsync("api/estoque", item);
+        if (response.IsSuccessStatusCode)
+        {
+            Snackbar.Add("Estoque adicionado!", Severity.Success);
+            _precoCompra = 0;
+            _quantidade = 1;
+            _produtos = await Http.GetFromJsonAsync<List<Produto>>("api/produtos") ?? new();
+            await CarregarItensEstoque();
+        }
+        else
+        {
+            Snackbar.Add("Erro ao adicionar estoque.", Severity.Error);
+        }
+    }
+
+    private async Task RetirarEstoque()
+    {
+        if (!ValidarResponsavel()) return;
+
+        if (!_itensRetirada.Any(i => i.ProdutoId > 0 && i.Quantidade > 0))
+        {
+            Snackbar.Add("Adicione ao menos um produto para retirada.", Severity.Warning);
+            return;
+        }
+
+        if (_registrarComoVenda)
+        {
+            var vendas = _itensRetirada
+                .Where(i => i.ProdutoId > 0 && i.Quantidade > 0)
+                .Select(i => new Venda
+                {
+                    ProdutoId = i.ProdutoId,
+                    Quantidade = i.Quantidade,
+                    Cliente = _clienteVenda,
+                    Responsavel = _responsavel.Trim(),
+                    ValorUnitario = i.ValorUnitario,
+                    FormaPagamento = _formaPagamento,
+                    Pago = _jaFoiPago,
+                    ValorPago = _jaFoiPago ? null : (_valorPago > 0 ? _valorPago : null),
+                    PrevisaoPagamentoRestante = _jaFoiPago || _semPrevisao ? null : _previsaoPagamento,
+                    FormaPagamentoRestante = _jaFoiPago ? null : _formaPagamentoRestante,
+                    Observacoes = _observacoesVenda
+                }).ToList();
+
+            var response = vendas.Count == 1
+                ? await Http.PostAsJsonAsync("api/vendas", vendas.First())
+                : await Http.PostAsJsonAsync("api/vendas/multiplos", vendas);
+
+            if (response.IsSuccessStatusCode)
+            {
+                // Upload comprovante se houver
+                if (_arquivoComprovante is not null)
+                {
+                    try
+                    {
+                        // Tenta extrair a(s) venda(s) criada(s)
+                        var json = await response.Content.ReadAsStringAsync();
+                        List<Venda> vendasCriadas;
+                        try
+                        {
+                            vendasCriadas = System.Text.Json.JsonSerializer.Deserialize<List<Venda>>(json,
+                                new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? new();
+                        }
+                        catch
+                        {
+                            var single = System.Text.Json.JsonSerializer.Deserialize<Venda>(json,
+                                new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                            vendasCriadas = single is not null ? new() { single } : new();
+                        }
+
+                        foreach (var vc in vendasCriadas.Where(x => x.Id > 0))
+                        {
+                            using var stream = _arquivoComprovante.OpenReadStream(10 * 1024 * 1024);
+                            var content = new MultipartFormDataContent();
+                            content.Add(new StreamContent(stream), "arquivo", _arquivoComprovante.Name);
+                            await Http.PostAsync($"api/vendas/{vc.Id}/comprovante", content);
+                        }
+                    }
+                    catch
+                    {
+                        Snackbar.Add("Venda registrada, mas erro no upload do comprovante.", Severity.Warning);
+                    }
+                }
+
+                Snackbar.Add("Venda registrada e estoque atualizado!", Severity.Success);
+                LimparCamposVenda();
+            }
+            else
+            {
+                var erro = await response.Content.ReadAsStringAsync();
+                Snackbar.Add($"Erro: {erro}", Severity.Error);
+                return;
+            }
+        }
+        else
+        {
+            var requests = _itensRetirada
+                .Where(i => i.ProdutoId > 0 && i.Quantidade > 0)
+                .Select(i => new { ProdutoId = i.ProdutoId, Quantidade = i.Quantidade })
+                .ToList();
+
+            var response = requests.Count == 1
+                ? await Http.PostAsJsonAsync("api/estoque/retirar", requests.First())
+                : await Http.PostAsJsonAsync("api/estoque/retirar-multiplos", requests);
+
+            if (response.IsSuccessStatusCode)
+            {
+                Snackbar.Add("Estoque retirado!", Severity.Success);
+            }
+            else
+            {
+                var erro = await response.Content.ReadAsStringAsync();
+                Snackbar.Add($"Erro: {erro}", Severity.Error);
+                return;
+            }
+        }
+
+        _itensRetirada = new() { new ItemRetirada { ProdutoId = _produtoSelecionadoId } };
+        _produtos = await Http.GetFromJsonAsync<List<Produto>>("api/produtos") ?? new();
+        await CarregarItensEstoque();
+    }
+
+    private void LimparCamposVenda()
+    {
+        _clienteVenda = string.Empty;
+        _formaPagamento = "Dinheiro";
+        _jaFoiPago = false;
+        _valorPago = 0;
+        _semPrevisao = false;
+        _previsaoPagamento = null;
+        _formaPagamentoRestante = "A combinar";
+        _observacoesVenda = string.Empty;
+        _registrarComoVenda = false;
+        _arquivoComprovante = null;
+        _itensRetirada = new() { new ItemRetirada { ProdutoId = _produtoSelecionadoId } };
+    }
+
+    public class ItemRetirada
+    {
+        public int ProdutoId { get; set; }
+        public int Quantidade { get; set; } = 1;
+        public decimal ValorUnitario { get; set; }
+    }
+}

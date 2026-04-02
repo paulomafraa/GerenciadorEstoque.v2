@@ -1,0 +1,99 @@
+﻿@page "/"
+@rendermode InteractiveWebAssembly
+@inject HttpClient Http
+
+<PageTitle>Dashboard - Gerenciador de Estoque</PageTitle>
+
+<MudText Typo="Typo.h4" Class="mb-4">📊 Dashboard</MudText>
+
+<MudGrid>
+    <MudItem xs="12" sm="6" md="3">
+        <MudPaper Class="pa-4 d-flex flex-column align-center" Elevation="2">
+            <MudIcon Icon="@Icons.Material.Filled.Category" Color="Color.Primary" Size="Size.Large" />
+            <MudText Typo="Typo.h5" Class="mt-2">@_totalProdutos</MudText>
+            <MudText Typo="Typo.body2" Color="Color.Secondary">Produtos Cadastrados</MudText>
+        </MudPaper>
+    </MudItem>
+    <MudItem xs="12" sm="6" md="3">
+        <MudPaper Class="pa-4 d-flex flex-column align-center" Elevation="2">
+            <MudIcon Icon="@Icons.Material.Filled.Inventory2" Color="Color.Success" Size="Size.Large" />
+            <MudText Typo="Typo.h5" Class="mt-2">@_totalItensEstoque</MudText>
+            <MudText Typo="Typo.body2" Color="Color.Secondary">Itens em Estoque</MudText>
+        </MudPaper>
+    </MudItem>
+    <MudItem xs="12" sm="6" md="3">
+        <MudPaper Class="pa-4 d-flex flex-column align-center" Elevation="2">
+            <MudIcon Icon="@Icons.Material.Filled.ShoppingCart" Color="Color.Warning" Size="Size.Large" />
+            <MudText Typo="Typo.h5" Class="mt-2">@_totalVendas</MudText>
+            <MudText Typo="Typo.body2" Color="Color.Secondary">Vendas Realizadas</MudText>
+        </MudPaper>
+    </MudItem>
+    <MudItem xs="12" sm="6" md="3">
+        <MudPaper Class="pa-4 d-flex flex-column align-center" Elevation="2">
+            <MudIcon Icon="@Icons.Material.Filled.AttachMoney" Color="Color.Info" Size="Size.Large" />
+            <MudText Typo="Typo.h5" Class="mt-2">R$ @_totalFaturamento.ToString("N2")</MudText>
+            <MudText Typo="Typo.body2" Color="Color.Secondary">Faturamento Total</MudText>
+        </MudPaper>
+    </MudItem>
+</MudGrid>
+
+@if (_produtos.Any())
+{
+    <MudText Typo="Typo.h5" Class="mt-6 mb-3">📦 Resumo por Produto</MudText>
+    <MudGrid>
+        @foreach (var p in _produtos)
+        {
+            var qtdEstoque = p.ItensEstoque?.Sum(e => e.Quantidade) ?? 0;
+            var totalGasto = p.ItensEstoque?.Sum(e => e.Quantidade * e.PrecoCompra) ?? 0;
+            var mediaCompra = qtdEstoque > 0 ? totalGasto / qtdEstoque : 0;
+
+            <MudItem xs="12" sm="6" md="4">
+                <MudCard Elevation="2" Class="rounded-lg">
+                    @if (!string.IsNullOrEmpty(p.ImagemUrl))
+                    {
+                        <MudCardMedia Image="@($"api/produtos/imagem/{p.ImagemUrl}")" Height="180" />
+                    }
+                    else
+                    {
+                        <div class="d-flex justify-center align-center" style="height:180px;background:#e3f2fd;">
+                            <MudIcon Icon="@Icons.Material.Filled.Image" Size="Size.Large" Color="Color.Primary" />
+                        </div>
+                    }
+                    <MudCardContent>
+                        <MudText Typo="Typo.h6">@p.Nome</MudText>
+                        <MudChip T="string" Color="Color.Info" Size="Size.Small">@p.Tipo</MudChip>
+                        <MudText Typo="Typo.body2" Class="mt-2">
+                            Estoque: <b>@qtdEstoque</b> | Média: <b>R$ @mediaCompra.ToString("N2")</b>
+                        </MudText>
+                        <MudText Typo="Typo.body2">
+                            Preço Venda: <b>R$ @p.PrecoVenda.ToString("N2")</b>
+                        </MudText>
+                    </MudCardContent>
+                </MudCard>
+            </MudItem>
+        }
+    </MudGrid>
+}
+
+@code {
+    private List<Produto> _produtos = new();
+    private int _totalProdutos;
+    private int _totalItensEstoque;
+    private int _totalVendas;
+    private decimal _totalFaturamento;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            _produtos = await Http.GetFromJsonAsync<List<Produto>>("api/produtos") ?? new();
+            var vendas = await Http.GetFromJsonAsync<List<Venda>>("api/vendas") ?? new();
+
+            _totalProdutos = _produtos.Count;
+            _totalItensEstoque = _produtos.Sum(p => p.ItensEstoque?.Sum(e => e.Quantidade) ?? 0);
+            _totalVendas = vendas.Count;
+            _totalFaturamento = vendas.Sum(v => v.ValorTotal);
+        }
+        catch { }
+    }
+}

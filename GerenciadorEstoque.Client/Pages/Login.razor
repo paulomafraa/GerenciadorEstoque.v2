@@ -1,0 +1,155 @@
+@page "/login"
+@layout LoginLayout
+@rendermode InteractiveWebAssembly
+@inject HttpClient Http
+@inject NavigationManager Nav
+
+<div style="min-height:100vh;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#1565C0 0%,#1976D2 40%,#42A5F5 100%);">
+    <MudCard Style="width:400px;max-width:95vw;" Elevation="8" Class="rounded-lg">
+        <MudCardContent Class="pa-6">
+            <div class="d-flex flex-column align-center mb-4">
+                <MudIcon Icon="@Icons.Material.Filled.Inventory2" Size="Size.Large"
+                         Color="Color.Primary" Style="font-size:3rem;" />
+                <MudText Typo="Typo.h5" Class="mt-2" Align="Align.Center">
+                    Gerenciador de Estoque
+                </MudText>
+                <MudText Typo="Typo.body2" Color="Color.Secondary" Align="Align.Center">
+                    Faça login para continuar
+                </MudText>
+            </div>
+
+            @if (!string.IsNullOrEmpty(_erro))
+            {
+                <MudAlert Severity="Severity.Error" Class="mb-3" Dense="true">@_erro</MudAlert>
+            }
+
+            <MudTextField @bind-Value="_usuario" Label="Usuário" Variant="Variant.Outlined"
+                          Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Person"
+                          Class="mb-3" Disabled="_carregando"
+                          OnKeyDown="OnKeyDown" />
+
+            <MudTextField @bind-Value="_senha" Label="Senha" Variant="Variant.Outlined"
+                          InputType="@(_mostrarSenha ? InputType.Text : InputType.Password)"
+                          Adornment="Adornment.End"
+                          AdornmentIcon="@(_mostrarSenha ? Icons.Material.Filled.VisibilityOff : Icons.Material.Filled.Visibility)"
+                          OnAdornmentClick="@(() => _mostrarSenha = !_mostrarSenha)"
+                          Class="mb-3" Disabled="_carregando"
+                          OnKeyDown="OnKeyDown" />
+
+            <MudPaper Class="pa-3 mb-3 d-flex align-center gap-3" Elevation="0"
+                      Style="background:#E3F2FD;border-radius:8px;">
+                <MudIcon Icon="@Icons.Material.Filled.Security" Color="Color.Primary" />
+                <MudText Typo="Typo.body1" Style="font-weight:600;">
+                    Quanto é @_captchaA + @_captchaB?
+                </MudText>
+                <MudTextField @bind-Value="_captchaResposta" Variant="Variant.Outlined"
+                              Style="max-width:80px;" Disabled="_carregando"
+                              OnKeyDown="OnKeyDown" />
+            </MudPaper>
+
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" FullWidth="true"
+                       Size="Size.Large" OnClick="FazerLogin" Disabled="_carregando"
+                       Class="mt-2" Style="text-transform:none;font-size:1rem;">
+                @if (_carregando)
+                {
+                    <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                    <span>Entrando...</span>
+                }
+                else
+                {
+                    <MudIcon Icon="@Icons.Material.Filled.Login" Class="mr-2" />
+                    <span>Entrar</span>
+                }
+            </MudButton>
+        </MudCardContent>
+    </MudCard>
+</div>
+
+@code {
+    private string _usuario = string.Empty;
+    private string _senha = string.Empty;
+    private string _captchaResposta = string.Empty;
+    private string _erro = string.Empty;
+    private bool _mostrarSenha;
+    private bool _carregando;
+
+    private int _captchaA;
+    private int _captchaB;
+    private Random _rng = new();
+
+    protected override void OnInitialized()
+    {
+        GerarCaptcha();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            try
+            {
+                var response = await Http.GetAsync("api/auth/status");
+                if (response.IsSuccessStatusCode)
+                    Nav.NavigateTo("/", forceLoad: true);
+            }
+            catch { }
+        }
+    }
+
+    private void GerarCaptcha()
+    {
+        _captchaA = _rng.Next(1, 20);
+        _captchaB = _rng.Next(1, 20);
+        _captchaResposta = string.Empty;
+    }
+
+    private async Task OnKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+            await FazerLogin();
+    }
+
+    private async Task FazerLogin()
+    {
+        _erro = string.Empty;
+
+        if (string.IsNullOrWhiteSpace(_usuario) || string.IsNullOrWhiteSpace(_senha))
+        {
+            _erro = "Preencha usuário e senha.";
+            return;
+        }
+
+        if (!int.TryParse(_captchaResposta, out var resposta) || resposta != _captchaA + _captchaB)
+        {
+            _erro = "Resposta do CAPTCHA incorreta.";
+            GerarCaptcha();
+            return;
+        }
+
+        _carregando = true;
+        try
+        {
+            var request = new LoginRequest { Usuario = _usuario, Senha = _senha };
+            var response = await Http.PostAsJsonAsync("api/auth/login", request);
+            var result = await response.Content.ReadFromJsonAsync<LoginResponse>();
+
+            if (result?.Sucesso == true)
+            {
+                Nav.NavigateTo("/", forceLoad: true);
+            }
+            else
+            {
+                _erro = result?.Mensagem ?? "Erro ao fazer login.";
+                GerarCaptcha();
+            }
+        }
+        catch
+        {
+            _erro = "Erro de conexão. Tente novamente.";
+        }
+        finally
+        {
+            _carregando = false;
+        }
+    }
+}

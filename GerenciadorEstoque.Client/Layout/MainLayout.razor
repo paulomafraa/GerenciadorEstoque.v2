@@ -1,0 +1,110 @@
+﻿@inherits LayoutComponentBase
+@using MudBlazor
+@inject HttpClient Http
+@inject NavigationManager Nav
+
+<MudThemeProvider Theme="_tema" IsDarkMode="_modoEscuro" />
+<MudPopoverProvider />
+<MudDialogProvider />
+<MudSnackbarProvider />
+
+<MudLayout>
+    <MudAppBar Fixed="true" Color="Color.Primary" Elevation="2" Dense="true">
+        <MudIconButton Icon="@Icons.Material.Filled.Menu" Color="Color.Inherit" Edge="Edge.Start"
+                       OnClick="@(() => _drawerAberto = !_drawerAberto)" />
+        <MudText Typo="Typo.h6" Class="ml-2">📦 Gerenciador de Estoque</MudText>
+        <MudSpacer />
+        <MudIconButton Icon="@(_modoEscuro ? Icons.Material.Filled.LightMode : Icons.Material.Filled.DarkMode)"
+                       Color="Color.Inherit"
+                       OnClick="@(() => _modoEscuro = !_modoEscuro)" />
+        <MudIconButton Icon="@Icons.Material.Filled.Logout" Color="Color.Inherit"
+                       OnClick="Logout" Title="Sair" />
+    </MudAppBar>
+
+    <MudDrawer @bind-Open="_drawerAberto" Elevation="1" ClipMode="DrawerClipMode.Always"
+               Variant="DrawerVariant.Responsive" Breakpoint="Breakpoint.Md">
+        <MudNavMenu Rounded="true" Margin="Margin.Dense" Class="pa-2">
+            <MudNavLink Href="/" Match="NavLinkMatch.All"
+                        Icon="@Icons.Material.Filled.Dashboard">Dashboard</MudNavLink>
+            <MudNavLink Href="/produtos" Match="NavLinkMatch.Prefix"
+                        Icon="@Icons.Material.Filled.Category">Produtos</MudNavLink>
+            <MudNavLink Href="/estoque" Match="NavLinkMatch.Prefix"
+                        Icon="@Icons.Material.Filled.Inventory2">Estoque</MudNavLink>
+            <MudNavLink Href="/vendas" Match="NavLinkMatch.Prefix"
+                        Icon="@Icons.Material.Filled.ShoppingCart">Vendas</MudNavLink>
+            <MudNavLink Href="/relatorios" Match="NavLinkMatch.Prefix"
+                        Icon="@Icons.Material.Filled.Assessment">Relatórios</MudNavLink>
+            <MudDivider Class="my-2" />
+            <MudNavLink Href="/usuarios" Match="NavLinkMatch.Prefix"
+                        Icon="@Icons.Material.Filled.People">Usuários</MudNavLink>
+        </MudNavMenu>
+    </MudDrawer>
+
+    <MudMainContent Class="pa-4" Style="margin-top:64px;">
+        @Body
+    </MudMainContent>
+</MudLayout>
+
+<div id="blazor-error-ui" data-nosnippet>
+    An unhandled error has occurred.
+    <a href="." class="reload">Reload</a>
+    <span class="dismiss">🗙</span>
+</div>
+
+@code {
+    private bool _drawerAberto = true;
+    private bool _modoEscuro = false;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            try
+            {
+                var response = await Http.GetAsync("api/auth/status");
+                if (!response.IsSuccessStatusCode)
+                    Nav.NavigateTo("/login", forceLoad: true);
+            }
+            catch
+            {
+                Nav.NavigateTo("/login", forceLoad: true);
+            }
+        }
+    }
+
+    private async Task Logout()
+    {
+        try { await Http.PostAsync("api/auth/logout", null); } catch { }
+        Nav.NavigateTo("/login", forceLoad: true);
+    }
+
+    private MudTheme _tema = new()
+    {
+        PaletteLight = new PaletteLight
+        {
+            Primary = "#1976D2",
+            Secondary = "#FF9800",
+            AppbarBackground = "#1565C0",
+            Background = "#F5F5F5",
+            Surface = "#FFFFFF",
+            DrawerBackground = "#FAFAFA",
+            Success = "#4CAF50",
+            Error = "#F44336",
+        },
+        PaletteDark = new PaletteDark
+        {
+            Primary = "#90CAF9",
+            Secondary = "#FFB74D",
+            AppbarBackground = "#1E1E2E",
+            Background = "#121212",
+            Surface = "#1E1E2E",
+            DrawerBackground = "#1A1A2E",
+            Success = "#66BB6A",
+            Error = "#EF5350",
+        },
+        Typography = new Typography
+        {
+            Default = new DefaultTypography { FontFamily = new[] { "Inter", "sans-serif" } }
+        }
+    };
+}
