@@ -1,70 +1,82 @@
-# 📦 Gerenciador de Estoque
+# GerenciadorEstoque
 
-Sistema web de gerenciamento de estoque desenvolvido para uso interno de uma loja. Projeto de portfólio demonstrando integração entre Blazor WebAssembly, ASP.NET Core e infraestrutura no Google Cloud.
+Sistema web de gestão de estoque para uso interno de loja.  
+Portfólio com Blazor WebAssembly, ASP.NET Core e deploy no Google Cloud.
 
-> ⚠️ **Aplicação de uso interno** — não possui acesso público. O repositório existe para fins de portfólio e demonstração de código.
+![Status](https://img.shields.io/badge/status-portfolio-0f3d36?style=flat-square)
+![.NET](https://img.shields.io/badge/.NET-9-512BD4?style=flat-square)
+![Blazor](https://img.shields.io/badge/Blazor-WASM-512BD4?style=flat-square)
+![MySQL](https://img.shields.io/badge/MySQL-8-4479A1?style=flat-square)
 
-## 🛠️ Tecnologias
+> Aplicação de uso interno, sem acesso público. O repositório existe para portfólio e demonstração de código.
+
+## Sobre
+
+App full-stack para cadastro de produtos, controle de estoque, vendas, relatórios e usuários.  
+Roda em container no Cloud Run, com MySQL no Cloud SQL e segredos no Secret Manager.
+
+Versão web do fluxo que começou no desktop [ControleEstoque](https://github.com/paulomafraa/ControleEstoque).
+
+## Stack
 
 | Camada | Tecnologia |
-|---|---|
+| --- | --- |
 | Frontend | Blazor WebAssembly (.NET 9) + MudBlazor |
 | Backend | ASP.NET Core 9 Web API |
-| Banco de dados | MySQL 8 via Pomelo EF Core |
-| Deploy | Google Cloud Run (containerizado) |
-| Banco cloud | Google Cloud SQL (MySQL) |
+| Banco | MySQL 8 (Pomelo EF Core) |
+| Deploy | Google Cloud Run + Docker |
+| Banco cloud | Google Cloud SQL |
 | Segredos | Google Secret Manager |
-| Autenticação | Cookie Authentication (ASP.NET Core) |
-| Build | Google Cloud Build + Docker |
+| Auth | Cookie Authentication |
+| Build | Google Cloud Build |
 
-## ✨ Funcionalidades
+## Funcionalidades
 
-- 🔐 **Login com CAPTCHA matemático** — proteção contra bots
-- 📦 **Produtos** — cadastro com imagem (armazenada como BLOB no MySQL)
-- 📊 **Estoque** — controle de entradas e saídas
-- 🛒 **Vendas** — registro e acompanhamento
-- 📈 **Relatórios** — visão geral do negócio
-- 👥 **Usuários** — gerenciamento de equipe
-- 💾 **Backup automático** — exportação JSON ao iniciar
-- 🌙 **Modo escuro** — alternância de tema
+- Login com CAPTCHA matemático
+- Cadastro de produtos com imagem (BLOB no MySQL)
+- Controle de entradas e saídas de estoque
+- Registro e acompanhamento de vendas
+- Relatórios gerais do negócio
+- Gerenciamento de usuários
+- Backup automático em JSON ao iniciar
+- Modo escuro
 
-## 🏗️ Arquitetura
+## Arquitetura
 
 ```
-GerenciadorEstoque/               ← Projeto servidor (ASP.NET Core)
-├── Controllers/                  ← APIs REST (protegidas com [Authorize])
-├── Data/AppDbContext.cs           ← EF Core + MySQL
-├── Components/App.razor           ← Entry point Blazor
-└── Program.cs                    ← Middleware, auth, DB migration
+GerenciadorEstoque/                 Projeto servidor (ASP.NET Core)
+├── Controllers/                    APIs REST ([Authorize])
+├── Data/AppDbContext.cs            EF Core + MySQL
+├── Components/App.razor            Entry point Blazor
+└── Program.cs                      Middleware, auth, migrations
 
-GerenciadorEstoque.Client/        ← Projeto cliente (Blazor WASM)
-├── Pages/                        ← Páginas do SPA
-├── Layout/MainLayout.razor        ← Layout principal com verificação de auth
-└── Layout/LoginLayout.razor       ← Layout da tela de login
+GerenciadorEstoque.Client/          Cliente Blazor WASM
+├── Pages/                          Páginas do SPA
+├── Layout/MainLayout.razor         Layout com verificação de auth
+└── Layout/LoginLayout.razor        Layout da tela de login
 ```
 
-## 🚀 Como fazer deploy no Google Cloud Run
+## Como rodar localmente
 
-### Pré-requisitos
-
-- Conta no [Google Cloud Platform](https://console.cloud.google.com)
-- [Google Cloud SDK](https://cloud.google.com/sdk/docs/install) instalado
-- Instância Cloud SQL MySQL criada
-- Secret Manager configurado com a senha do banco
-
-### 1. Configurar o script
-
-Edite `deploy-cloudrun.ps1` e preencha suas informações:
+Requisitos: .NET 9 SDK e MySQL local (ou cloud-sql-proxy).
 
 ```powershell
-$PROJECT_ID = "SEU-PROJETO-GCP"
-$INSTANCE_CONNECTION = "SEU-PROJETO:REGIAO:NOME-DA-INSTANCIA"
-$DB_USER = "USUARIO-DO-BANCO"
+cd "Controle Estoque V2/GerenciadorEstoque/GerenciadorEstoque"
+
+$env:DB_CONNECTION = "server=127.0.0.1;port=3307;user=SEU_USER;database=estoque"
+$env:DB_PASSWORD   = "SUA_SENHA"
+$env:APP_USER      = "admin"
+$env:APP_PASSWORD  = "suasenha"
+
+dotnet run
+# http://localhost:5199
 ```
 
-### 2. Configurar credenciais de login
+## Deploy no Cloud Run
 
-Após o deploy, defina as credenciais de acesso ao sistema:
+1. Conta no GCP, Cloud SDK, instância Cloud SQL MySQL e Secret Manager
+2. Edite `deploy-cloudrun.ps1` com `PROJECT_ID`, instância e usuário do banco
+3. Defina credenciais de login:
 
 ```powershell
 gcloud run services update gerenciador-estoque `
@@ -72,43 +84,25 @@ gcloud run services update gerenciador-estoque `
     --update-env-vars "APP_USER=SEU_USUARIO,APP_PASSWORD=SUA_SENHA"
 ```
 
-### 3. Executar o deploy
+4. Execute o script de deploy
 
-```powershell
-cd "Controle Estoque V2\GerenciadorEstoque"
-.\deploy-cloudrun.ps1
-```
-
-### Variáveis de ambiente necessárias no Cloud Run
+### Variáveis de ambiente
 
 | Variável | Descrição | Tipo |
-|---|---|---|
+| --- | --- | --- |
 | `DB_CONNECTION` | Connection string MySQL (sem senha) | Env var |
 | `DB_PASSWORD` | Senha do banco | Secret Manager |
-| `APP_USER` | Usuário para login no sistema | Env var |
-| `APP_PASSWORD` | Senha para login no sistema | Env var |
+| `APP_USER` | Usuário do sistema | Env var |
+| `APP_PASSWORD` | Senha do sistema | Env var |
 
-## 💻 Executar localmente
+## Segurança
 
-```bash
-# Requisitos: .NET 9 SDK + MySQL local ou cloud-sql-proxy
+- Sem credenciais no código (tudo por env vars)
+- Senhas no Secret Manager
+- Cookies HttpOnly com SlidingExpiration de 12h
+- Middleware redireciona para `/login` antes do prerender
+- `[Authorize]` nos controllers de dados
 
-cd "Controle Estoque V2/GerenciadorEstoque/GerenciadorEstoque"
+## Autor
 
-# Configurar variáveis de ambiente
-$env:DB_CONNECTION = "server=127.0.0.1;port=3307;user=SEU_USER;database=estoque"
-$env:DB_PASSWORD   = "SUA_SENHA"
-$env:APP_USER      = "admin"
-$env:APP_PASSWORD  = "suasenha"
-
-dotnet run
-# Acesse: http://localhost:5199
-```
-
-## 📁 Estrutura de segurança
-
-- **Sem credenciais no código** — tudo via variáveis de ambiente
-- **Senhas no Secret Manager** — injetadas como segredos no Cloud Run
-- **Cookies HttpOnly** com SlidingExpiration de 12h
-- **Proteção server-side** — middleware redireciona para `/login` antes do prerender
-- **[Authorize]** em todos os controllers de dados
+[Paulo Mafra Watanabe](https://github.com/paulomafraa) · [LinkedIn](https://www.linkedin.com/in/paulo-watanabe/)
